@@ -15,7 +15,42 @@
 <script>
 const API_URL='https://script.google.com/macros/s/AKfycbzi5TSIokmigJfV1mDQmhzq7B_mrdp5WW9lj2I72aalGwi9sUKXRWwddNwbjHOgFfE/exec'; let courses=[], adminPassword=''; const $=id=>document.getElementById(id);
 function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
-async function api(payload){if(API_URL.includes('PUT_APPS'))throw Error('ضع رابط Web App أولاً');const r=await fetch(API_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(payload)});return r.json()}
+async function api(payload){
+  if(API_URL.includes('PUT_APPS')) throw Error('ضع رابط Web App أولاً');
+
+  async function send(){
+    const url = API_URL + (API_URL.includes('?') ? '&' : '?') + '_=' + Date.now();
+    const r = await fetch(url,{
+      method:'POST',
+      headers:{'Content-Type':'text/plain;charset=utf-8'},
+      body:JSON.stringify(payload),
+      cache:'no-store',
+      redirect:'follow'
+    });
+
+    const raw = await r.text();
+    const trimmed = raw.trim();
+
+    try{
+      return JSON.parse(trimmed);
+    }catch(err){
+      if(trimmed.startsWith('<!DOCTYPE') || trimmed.startsWith('<html') || trimmed.startsWith('<HTML')){
+        throw Error('خدمة Apps Script أعادت صفحة Google بدل بيانات JSON. أعد نشر الـ Web App كنسخة جديدة وتأكد أن Execute as = Me و Who has access = Anyone.');
+      }
+      throw Error('تعذر قراءة رد Apps Script: ' + trimmed.slice(0,180));
+    }
+  }
+
+  try{
+    return await send();
+  }catch(err){
+    if(String(err.message||err).includes('صفحة Google بدل بيانات JSON')){
+      await new Promise(r=>setTimeout(r,700));
+      return await send();
+    }
+    throw err;
+  }
+}
 function hideAll(){['public','detail','admin'].forEach(x=>$(x).classList.add('hidden'))}
 function catsHtml(o){return Object.entries(o||{}).map(([k,v])=>`<span class="pill teal">${esc(k)}: ${esc(v)}</span>`).join('')}
 async function loadCourses(){try{const r=await api({action:'listCourses'});if(!r.success)throw Error(r.message);courses=r.courses||[];fillYears();renderCourses()}catch(e){$('content').innerHTML=`<div class="notice">${esc(e.message)}</div>`}}
